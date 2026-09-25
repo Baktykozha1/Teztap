@@ -176,7 +176,18 @@ Set the private server-side `API_URL` to the deployed API origin before starting
 
 The root `compose.yaml` runs the Next.js web app, Express API, and PostgreSQL. Only the web container is published; API and database ports stay on the private Compose network. PostgreSQL data lives in the named `teztap-postgres` volume.
 
-1. Copy `deploy/.env.example` to `deploy/.env`.
+1. Create `deploy/.env` on the server with the settings below. Compose supplies defaults for the remaining optional settings:
+
+```dotenv
+POSTGRES_DB=teztap
+POSTGRES_USER=teztap
+POSTGRES_PASSWORD=
+AUTH_SECRET=
+GEMINI_API_KEY=
+TWOGIS_API_KEY=
+CORS_ORIGINS=https://your-domain.example
+WEB_PORT=127.0.0.1:3000
+```
 2. Generate independent URL-safe secrets and put them into `POSTGRES_PASSWORD` and `AUTH_SECRET`:
 
 ```bash

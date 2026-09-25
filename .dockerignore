@@ -1,8 +1,6 @@
 # Secrets and local environment
 .env
 .env.*
-!.env.example
-!deploy/.env.example
 
 # Dependencies, build output, and test artifacts
 node_modules/
