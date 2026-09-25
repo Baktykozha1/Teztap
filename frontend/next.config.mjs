@@ -7,7 +7,8 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.resolve(currentDirectory, ".."),
-  output: "standalone",
+  // Vercel builds Next.js functions itself; standalone output is reserved for Docker.
+  ...(process.env.VERCEL === "1" ? {} : { output: "standalone" }),
   // API route handlers forward the existing session through an HttpOnly cookie.
 };
 
