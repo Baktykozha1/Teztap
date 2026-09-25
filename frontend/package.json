@@ -1,0 +1,22 @@
+{
+  "name": "teztap-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0 --port 3000"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "framer-motion": "^12.39.0",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
+    "lucide-react": "^1.16.0",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.8.1",
+    "tailwindcss": "^4.3.0"
+  }
+}

@@ -1,0 +1,42 @@
+.accessPaywall, .accessNotice { display: flex; align-items: center; gap: 20px; padding: 28px 0; border-block: 1px solid var(--line, #d9d3ed); color: var(--text, #172149); grid-column: 1 / -1; min-width: 0; }
+.accessPaywall > svg { flex: 0 0 auto; color: var(--accent, #5b3df5); }
+.accessPaywall > div { flex: 1; min-width: 0; }
+.accessPaywall h2 { font-size: 21px; line-height: 1.35; margin: 6px 0; overflow-wrap: anywhere; }
+.accessPaywall p { font-size: 14px; line-height: 1.6; margin: 0; color: var(--muted, #646c87); }
+.accessPaywall.compact { gap: 12px; padding: 18px 0; flex-wrap: wrap; }
+.accessPaywall.compact h2 { font-size: 16px; }
+.accessPaywall.compact > .primaryButton { font-size: 13px; padding: 10px 14px; min-height: 40px; }
+.platformNavLink.locked { color: var(--muted, #646c87); }
+.platformNavLink > svg { flex-shrink: 0; }
+.accessPlanLink { margin-inline-start: auto; }
+.accessToolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin: 24px 0; }
+.accessPlanGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 28px 0; }
+.accessPlan { display: flex; flex-direction: column; border: 1px solid var(--line, #d9d3ed); border-radius: 8px; padding: 24px 20px; background: var(--surface, #fcfbff); min-width: 0; }
+.accessPlan.current { border-color: var(--accent, #5b3df5); background: var(--surface-subtle, #f3f0ff); box-shadow: inset 0 3px var(--accent, #5b3df5); }
+.accessPlanHeading { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.accessPlanHeading h2 { font-size: 19px; margin: 0; overflow-wrap: anywhere; }
+.accessPlanHeading svg { flex: 0 0 auto; color: #287b66; }
+.accessPlan > p { font-size: 14px; margin: 14px 0; color: var(--muted, #646c87); }
+.accessPrevious { font-size: 13px; margin: 8px 0 4px; }
+.accessPlan ul { list-style: none; padding: 0; margin: 12px 0 24px; flex: 1; }
+.accessPlan li { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; line-height: 1.5; margin: 12px 0; overflow-wrap: anywhere; }
+.accessPlan li > svg { color: #287b66; flex: 0 0 auto; margin-top: 3px; }
+.accessPlan button, .accessPlan a { width: 100%; white-space: normal; text-align: center; min-height: 48px; font-size: 14px; }
+.accessCurrent { display: flex; align-items: center; justify-content: center; min-height: 48px; color: #287b66; font-weight: 600; font-size: 14px; }
+.accessUserList { border-top: 1px solid var(--line, #d9d3ed); }
+.accessUserRow { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(190px, 1.2fr) auto; gap: 18px; align-items: end; padding: 22px 0; border-bottom: 1px solid var(--line, #d9d3ed); }
+.accessUserRow > div, .accessUserRow label { min-width: 0; }
+.accessUserRow p { margin: 6px 0; overflow-wrap: anywhere; }
+.accessUserRow label { display: grid; gap: 8px; font-size: 13px; }
+.accessUserRow input, .accessUserRow select { width: 100%; min-width: 0; height: 44px; background: var(--surface, #fcfbff); color: inherit; border: 1px solid var(--line, #d9d3ed); border-radius: 6px; padding: 8px; font: inherit; }
+.accessRowMessage { grid-column: 1 / -1; }
+.basicAnalysis { min-width: 0; margin: 24px 0; }
+.basicAnalysisHeader { display: flex; justify-content: space-between; align-items: center; gap: 24px; border-top: 1px solid var(--line, #d9d3ed); padding-top: 28px; }
+.basicAnalysisHeader h2 { font-size: 25px; line-height: 1.3; margin: 10px 0; }
+.basicAnalysisHeader > strong { font-size: 32px; flex-shrink: 0; }
+.basicAnalysisHeader small { display: block; font-size: 12px; font-weight: 500; }
+.basicAreaList { margin: 30px 0; }
+.basicAreaList > div { display: flex; justify-content: space-between; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line, #d9d3ed); }
+.accessNotice { font-size: 14px; min-height: 90px; }
+@media (max-width: 1100px) { .accessPlanGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .accessUserRow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .accessPlanGrid, .accessUserRow { grid-template-columns: minmax(0, 1fr); } .accessPaywall { align-items: flex-start; flex-wrap: wrap; gap: 14px; } .accessPaywall > .primaryButton { width: 100%; } .basicAnalysisHeader { align-items: flex-start; flex-direction: column; } .accessPlanLink { margin-inline-start: 0; } }
