@@ -63,7 +63,7 @@ test("2GIS discovery caches a 5x5 search, coalesces repeat requests, and paginat
   const afterModuleRestart = await search2GISBusinesses({ ...query, center: { lat: 43.63531, lng: 51.16819 } });
   assert.equal(afterModuleRestart.cache, "persistent-hit");
   assert.equal(afterModuleRestart.items.length, 25);
-  assert.equal(requests, 26, "the database cache avoids fresh provider requests after a module restart");
+  assert.equal(requests, 26, "the cache adapter avoids fresh provider requests after the 2GIS module is reloaded");
 
   const nextPage = await search2GISBusinesses({ ...query, page: 2 });
   assert.equal(nextPage.page, 2);
