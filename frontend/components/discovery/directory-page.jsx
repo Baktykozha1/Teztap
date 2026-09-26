@@ -139,9 +139,9 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setGeoPage(Number(data.page) || 1);
         setGeoHasMore(Boolean(data.hasMore));
         const sources = [...new Set((data.items || []).map((item) => item.sourceLabel).filter(Boolean))];
-        if (data.sourceErrors?.twogis) setGeoSourceNote(`2ГИС не ответил: ${data.sourceErrors.twogis}. Показываем доступные источники.`);
+        if (data.sourceErrors?.twogis) setGeoSourceNote(`2ГИС не ответил: ${data.sourceErrors.twogis}. ${!(data.items || []).length ? "Показываем демонстрационные примеры TezTap." : "Показываем доступные источники."}`);
         if (!data.sourceErrors?.twogis) setGeoSourceNote(data.cache === "stale" ? `Внешний источник недоступен · показан сохранённый набор · ${sources.join(" · ")}` : data.cache === "hit" ? `Локальный кеш · ${sources.join(" · ")}` : sources.join(" · ") || "Нет результатов в доступных источниках");
-        setGeoStatus("ready");
+        setGeoStatus(data.sourceErrors?.twogis && !(data.items || []).length ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;
         setGeographicListings([]);
@@ -169,10 +169,9 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setEducationPage(data.page || 1);
         setEducationTotal(Number(data.total || 0));
         setEducationHasMore(Boolean(data.hasMore));
-        if (data.status === "failed") setGeoSourceNote(`2ГИС поиск не выполнен: ${(data.errors || []).join("; ") || "проверьте ключ Places API"}`);
-        else
-        setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · страница ${data.page} · найдено по запросу: ${Number(data.total || 0)}${data.hasMore ? " · можно загрузить ещё" : data.total > (data.pageLimit || 5) * (data.pageSize || 10) ? " · показан лимит демо-ключа" : ""}`);
-        setGeoStatus("ready");
+        if (data.status === "failed") setGeoSourceNote(`2ГИС поиск не выполнен: ${(data.errors || []).join("; ") || "проверьте ключ Places API"}. Показываем демонстрационные примеры TezTap.`);
+        else setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · страница ${data.page} · найдено по запросу: ${Number(data.total || 0)}${data.hasMore ? " · можно загрузить ещё" : data.total > (data.pageLimit || 5) * (data.pageSize || 10) ? " · показан лимит демо-ключа" : ""}`);
+        setGeoStatus(data.status === "failed" ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;
         setGeographicListings([]);
@@ -262,8 +261,12 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
     finally { setEducationMoreLoading(false); }
   }
   const source = useMemo(() => {
-    const records = activeCategory === "education" ? geographicListings : activeCategory === "places"
-      ? (!geoQuery || geoStatus === "fallback" ? [] : geographicListings)
+    const records = activeCategory === "education" ? geoStatus === "fallback"
+      ? [...geographicListings, ...allListings.filter((item) => item.category === "education")]
+      : geographicListings : activeCategory === "places"
+      ? !geoQuery ? [] : geoStatus === "fallback"
+        ? [...geographicListings, ...allListings.filter((item) => item.category === "places")]
+        : geographicListings
       : geoStatus === "fallback" || !geographicListings.length ? allListings : geographicListings;
     const marketplaceRecords = activeCategory === "marketplace"
       ? [...records.filter((item) => item.category === "marketplace" && !String(item.id).startsWith("property-")), ...marketplaceLocal.localListings]
@@ -279,7 +282,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       const matchesType = type === "All" || (activeCategory === "places" ? placeKind(item) === type : ((favoritesOnly || !activeCategory) ? item.category === type : item.subtype === type)) || (activeCategory === "marketplace" && type === "Buy" && item.subtype === "Sell");
       const categoryName = config[item.category]?.title || item.category;
       const placeTypeName = item.category === "places" ? config.places.types.find((option) => option.key === placeKind(item))?.label || "" : "";
-      const matchesQuery = !query || ((activeCategory === "places" || activeCategory === "education") && item.source === "2gis") || `${item.title} ${item.provider} ${item.description} ${item.city} ${item.district} ${item.address || ""} ${item.subtype} ${item.subtypeLabel || ""} ${categoryName} ${placeTypeName} ${(item.education?.subjects || []).join(" ")} ${(item.tags || []).join(" ")}`.toLowerCase().includes(query);
+      const matchesQuery = !query || ((activeCategory === "places" || activeCategory === "education") && (item.source === "2gis" || (geoStatus === "fallback" && item.demo))) || `${item.title} ${item.provider} ${item.description} ${item.city} ${item.district} ${item.address || ""} ${item.subtype} ${item.subtypeLabel || ""} ${categoryName} ${placeTypeName} ${(item.education?.subjects || []).join(" ")} ${(item.tags || []).join(" ")}`.toLowerCase().includes(query);
       const scored = scoreListing(item, { center: searchOrigin.coordinates, radiusKm: radiusLimit });
       const matchesIntent = matchesDiscoveryIntent(item, requestIntent);
       const matchesEducation = activeCategory !== "education" || matchesEducationFilters(item, educationFilters);
