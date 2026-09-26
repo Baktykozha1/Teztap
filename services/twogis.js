@@ -1,16 +1,22 @@
 const API_URL = process.env.TWOGIS_API_URL || "https://catalog.api.2gis.com/3.0/items";
 const { getCitySearchArea } = require("../data/cities");
 const { getBusinessProfile } = require("../data/competitors");
+const { getCachedRequest, saveCachedRequest } = require("./database");
+const crypto = require("node:crypto");
 const API_KEY = String(process.env.TWOGIS_API_KEY || "").trim();
 const TIMEOUT_MS = Math.max(2000, Math.min(20000, Number(process.env.TWOGIS_TIMEOUT_MS) || 9000));
 const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TWOGIS_CACHE_TTL_MS) || 300_000);
+const PERSISTENT_CACHE_TTL_MS = Math.max(CACHE_TTL_MS, Number(process.env.TWOGIS_PERSISTENT_CACHE_TTL_MS) || 12 * 60 * 60 * 1000);
 const PAGE_SIZE = Math.max(1, Math.min(50, Number(process.env.TWOGIS_PAGE_SIZE) || 50));
 const configuredMaxResults = Number(process.env.TWOGIS_MAX_RESULTS ?? 0);
 const MAX_RESULTS = configuredMaxResults > 0 ? configuredMaxResults : Infinity;
 const GRID_SIZE = Math.max(1, Math.min(9, Number(process.env.TWOGIS_TILE_GRID_SIZE) || 5));
 const TILING_ENABLED = String(process.env.TWOGIS_ENABLE_TILING || "true").toLowerCase() !== "false";
-const REQUEST_GAP_MS = Math.max(250, Number(process.env.TWOGIS_REQUEST_GAP_MS) || 1100);
+// Keep 5x5 searches below 10 requests/second even if the deployment has an
+// older 1100ms setting. The provider limit is 600 successful requests/minute.
+const REQUEST_GAP_MS = Math.min(200, Math.max(100, Number(process.env.TWOGIS_REQUEST_GAP_MS) || 200));
 const cache = new Map();
+const pendingSearches = new Map();
 let nextRequestAt = 0;
 let resolvedPageSize = null;
 
@@ -47,15 +53,32 @@ function tileCenters(center, radiusKm, gridSize = GRID_SIZE) {
   return tiles;
 }
 
-async function waitForSlot() {
+async function waitForSlot(signal) {
+  if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
   const now = Date.now();
   const wait = Math.max(0, nextRequestAt - now);
   nextRequestAt = Math.max(now, nextRequestAt) + REQUEST_GAP_MS;
-  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+  if (wait) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(done, wait);
+      function done() {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }
+      function abort() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(new DOMException("Search aborted", "AbortError"));
+      }
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+    });
+  }
+  if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
 }
 
 async function fetchPage({ query, center, radiusKm, page, pageSize, signal, sort, branchOnly }) {
-  await waitForSlot();
+  await waitForSlot(signal);
   const url = new URL(API_URL);
   url.search = new URLSearchParams({
     key: API_KEY,
@@ -97,34 +120,26 @@ async function fetchPageWithCompatibleSize(options) {
   } catch (error) {
     // Demo keys are restricted to page_size <= 10. Retry transparently while
     // keeping the same page number so pagination still returns the full set.
-    if (preferredSize <= 10 || ![400, 403].includes(Number(error.status))) throw error;
+    const indicatesPageSizeLimit = /page[ _-]?size|pagination|maximum.{0,20}(page|result)|too many items/i.test(error.message || "");
+    if (preferredSize <= 10 || ![400, 403].includes(Number(error.status)) || !indicatesPageSizeLimit) throw error;
     resolvedPageSize = 10;
     return fetchPage({ ...options, pageSize: resolvedPageSize });
   }
 }
 
-async function collectTile({ query, center, radiusKm, maxItems, signal, sort, branchOnly, minRating, onBatch }) {
-  const items = [];
-  let page = 1;
-  let total = Infinity;
-  let effectivePageSize = PAGE_SIZE;
-  while (page <= 5 && items.length < maxItems && (page - 1) * effectivePageSize < total) {
-    const result = await fetchPageWithCompatibleSize({ query, center, radiusKm, page, pageSize: PAGE_SIZE, signal, sort, branchOnly });
-    effectivePageSize = Number(result.usedPageSize) || PAGE_SIZE;
-    const pageItems = Array.isArray(result.items) ? result.items : [];
-    total = Number.isFinite(Number(result.total)) ? Number(result.total) : pageItems.length;
-    items.push(...pageItems);
-    if (onBatch) onBatch(pageItems.map(normalizePlace).filter((item) => item && (minRating == null || item.rating != null && item.rating >= minRating)));
-    // 2GIS documents sort=rating as descending; pages below the threshold
-    // cannot contain further eligible results.
-    if (sort === "rating" && minRating != null && pageItems.length && pageItems.every((item) => {
-      const rating = normalizePlace(item)?.rating;
-      return rating != null && rating < minRating;
-    })) break;
-    if (!pageItems.length || pageItems.length < effectivePageSize || items.length >= total) break;
-    page += 1;
-  }
-  return items.slice(0, maxItems);
+async function collectTile({ query, center, radiusKm, maxItems, page, signal, sort, branchOnly, minRating, onBatch }) {
+  const result = await fetchPageWithCompatibleSize({ query, center, radiusKm, page, pageSize: PAGE_SIZE, signal, sort, branchOnly });
+  const effectivePageSize = Number(result.usedPageSize) || PAGE_SIZE;
+  const pageItems = Array.isArray(result.items) ? result.items : [];
+  const total = Number.isFinite(Number(result.total)) ? Number(result.total) : pageItems.length;
+  const eligible = pageItems.map(normalizePlace).filter((item) => item && (minRating == null || item.rating != null && item.rating >= minRating));
+  if (onBatch) onBatch(eligible);
+  return {
+    items: pageItems.slice(0, maxItems),
+    total,
+    pageSize: effectivePageSize,
+    hasMore: page < 5 && page * effectivePageSize < total
+  };
 }
 
 function normalizePlace(item) {
@@ -164,37 +179,85 @@ function normalizePlace(item) {
   };
 }
 
-async function search2GISBusinesses({ query, center, radiusKm = 10, signal, tileGridSize = GRID_SIZE, sort = "distance", branchOnly = false, minRating = null, onBatch }) {
-  const safeQuery = String(query || "").trim().slice(0, 160);
+async function search2GISBusinesses({ query, center, radiusKm = 10, signal, tileGridSize = GRID_SIZE, sort = "distance", branchOnly = false, minRating = null, page = 1, onBatch }) {
+  const safeQuery = String(query || "").trim().replace(/\s+/g, " ").slice(0, 160);
   const safeRadius = Math.max(1, Math.min(25, Number(radiusKm) || 10));
-  if (!API_KEY || !safeQuery || !isValidPoint(center)) return { items: [], status: API_KEY ? "skipped" : "not_configured", source: "2ГИС · Places API" };
+  if (!API_KEY || !safeQuery || !isValidPoint(center)) return { items: [], status: API_KEY ? "skipped" : "not_configured", source: "2GIS Places API" };
   const gridSize = Math.max(1, Math.min(9, Number(tileGridSize) || GRID_SIZE));
-  const cacheKey = JSON.stringify([safeQuery.toLowerCase(), center.lat, center.lng, safeRadius, gridSize, Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : "all", sort, branchOnly, minRating]);
+  const safePage = Math.max(1, Math.min(5, Math.floor(Number(page) || 1)));
+  const cacheKey = JSON.stringify([safeQuery.toLocaleLowerCase("ru-RU"), Number(center.lat).toFixed(3), Number(center.lng).toFixed(3), safeRadius, gridSize, Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : "all", sort, branchOnly, minRating, safePage]);
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) { if (onBatch) onBatch(cached.value.items); return { ...cached.value, cache: "hit" }; }
+  if (pendingSearches.has(cacheKey)) {
+    const inFlight = await pendingSearches.get(cacheKey);
+    if (onBatch) onBatch(inFlight.items);
+    return { ...inFlight, cache: "shared" };
+  }
 
-  const tiles = tileCenters(center, safeRadius, gridSize);
-  const perTileLimit = Number.isFinite(MAX_RESULTS) ? Math.max(1, Math.ceil(MAX_RESULTS / tiles.length)) : Infinity;
-  const raw = [];
-  const errors = [];
-  for (const tile of tiles) {
-    if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
+  const persistedKey = `twogis:places:${crypto.createHash("sha256").update(cacheKey).digest("hex")}`;
+  const operation = (async () => {
     try {
-      raw.push(...await collectTile({ query: safeQuery, ...tile, maxItems: perTileLimit, signal, sort, branchOnly, minRating, onBatch }));
-    } catch (error) {
-      errors.push(error.message || "2GIS request failed");
-      if (!raw.length) break;
+      const persisted = await getCachedRequest({ cacheKey: persistedKey, source: "twogis_places" });
+      if (persisted && Array.isArray(persisted.items)) {
+        if (Number(persisted.pageSize) > 0) resolvedPageSize = Math.min(50, Number(persisted.pageSize));
+        cache.set(cacheKey, { value: persisted, expiresAt: Date.now() + CACHE_TTL_MS });
+        if (onBatch) onBatch(persisted.items);
+        return { ...persisted, cache: "persistent-hit" };
+      }
+    } catch {
+      // A cache outage must not prevent a live Places API search.
     }
-  }
-  const deduped = new Map();
-  for (const item of raw) {
-    const normalized = normalizePlace(item);
-    if (normalized && (minRating == null || normalized.rating != null && normalized.rating >= minRating)) deduped.set(normalized.id, normalized);
-  }
-  const value = { items: [...deduped.values()], status: errors.length ? (deduped.size ? "partial" : "failed") : "ok", source: "2ГИС · Places API", errors: errors.length ? [...new Set(errors)].slice(0, 2) : [] };
-  if (!errors.length) cache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-  if (cache.size > 500) cache.delete(cache.keys().next().value);
-  return { ...value, cache: "miss", gridSize: TILING_ENABLED ? gridSize : 1, requestedMax: Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : null };
+
+    const tiles = tileCenters(center, safeRadius, TILING_ENABLED ? gridSize : 1);
+    const perTileLimit = Number.isFinite(MAX_RESULTS) ? Math.max(1, Math.ceil(MAX_RESULTS / tiles.length)) : Infinity;
+    const raw = [];
+    const errors = [];
+    const tileTotals = [];
+    let effectivePageSize = PAGE_SIZE;
+    for (const tile of tiles) {
+      if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
+      try {
+        // One page per grid cell avoids up to 125 billed requests for one search.
+        const result = await collectTile({ query: safeQuery, ...tile, maxItems: perTileLimit, page: safePage, signal, sort, branchOnly, minRating, onBatch });
+        raw.push(...result.items);
+        tileTotals.push(result.total);
+        effectivePageSize = result.pageSize;
+      } catch (error) {
+        if (signal?.aborted || error.name === "AbortError") throw error;
+        errors.push(error.message || "2GIS request failed");
+        if (!raw.length && errors.length === 1) break;
+      }
+    }
+    const deduped = new Map();
+    for (const item of raw) {
+      const normalized = normalizePlace(item);
+      if (normalized && (minRating == null || normalized.rating != null && normalized.rating >= minRating)) deduped.set(normalized.id, normalized);
+    }
+    const status = errors.length ? (deduped.size ? "partial" : "failed") : "ok";
+    const value = {
+      items: [...deduped.values()], status, source: "2ГИС · Places API",
+      errors: errors.length ? [...new Set(errors)].slice(0, 2) : [],
+      page: safePage, pageSize: effectivePageSize, pageLimit: 5,
+      total: tileTotals.reduce((sum, total) => sum + total, 0),
+      hasMore: safePage < 5 && tileTotals.some((total) => safePage * effectivePageSize < total),
+      gridSize: TILING_ENABLED ? gridSize : 1,
+      requestedMax: Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : null
+    };
+    const memoryTtl = status === "ok" ? CACHE_TTL_MS : Math.min(CACHE_TTL_MS, 60_000);
+    cache.set(cacheKey, { value, expiresAt: Date.now() + memoryTtl });
+    if (cache.size > 500) cache.delete(cache.keys().next().value);
+    const persistentTtl = status === "ok" ? PERSISTENT_CACHE_TTL_MS : Math.min(PERSISTENT_CACHE_TTL_MS, 5 * 60 * 1000);
+    try {
+      await saveCachedRequest({ cacheKey: persistedKey, source: "twogis_places", request: { query: safeQuery, radiusKm: safeRadius, page: safePage }, response: value, ttlMs: persistentTtl });
+    } catch {
+      // Keep live results usable when persistent caching is temporarily unavailable.
+    }
+    return { ...value, cache: "miss" };
+  })();
+
+  pendingSearches.set(cacheKey, operation);
+  try { return await operation; }
+  finally { pendingSearches.delete(cacheKey); }
 }
 
 async function search2GISPage({ query, center, radiusKm = 25, page = 1, sort = "rating", branchOnly = true, signal }) {
@@ -206,7 +269,7 @@ async function search2GISPage({ query, center, radiusKm = 25, page = 1, sort = "
   const items = (Array.isArray(result.items) ? result.items : []).map(normalizePlace).filter(Boolean);
   const pageSize = Number(result.usedPageSize) || PAGE_SIZE;
   const total = Number(result.total) || 0;
-  return { items, total, page: safePage, pageSize, hasMore: safePage < 5 && safePage * pageSize < total, pageLimit: 5, status: "ok", source: "2ГИС Places API" };
+  return { items, total, page: safePage, pageSize, hasMore: safePage < 5 && safePage * pageSize < total, pageLimit: 5, status: "ok", source: "2ГИС · Places API" };
 }
 
 // Backward-compatible adapter used by TezTap's original analysis pipeline.

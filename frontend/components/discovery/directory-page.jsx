@@ -68,6 +68,9 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
   const [placesNow, setPlacesNow] = useState(() => new Date());
   const [geographicListings, setGeographicListings] = useState([]);
   const [geoStatus, setGeoStatus] = useState("loading");
+  const [geoPage, setGeoPage] = useState(1);
+  const [geoHasMore, setGeoHasMore] = useState(false);
+  const [geoMoreLoading, setGeoMoreLoading] = useState(false);
   const [geoSourceNote, setGeoSourceNote] = useState("Загружаем открытые и локальные геоданные…");
   const [educationPage, setEducationPage] = useState(1);
   const [educationTotal, setEducationTotal] = useState(0);
@@ -119,18 +122,25 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
     if (activeCategory === "education") return undefined;
     if (activeCategory === "places" && !geoQuery) {
       setGeographicListings([]);
+      setGeoPage(1);
+      setGeoHasMore(false);
       setGeoSourceNote("Укажите тип заведения, чтобы запустить расширенный поиск 2ГИС по сетке 5×5.");
       setGeoStatus("ready");
       return undefined;
     }
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
+      setGeoPage(1);
+      setGeoHasMore(false);
       setGeoStatus("loading");
       try {
         const data = await loadGeographicListings({ category: activeCategory || "all", center: searchOrigin.coordinates, radiusKm: radiusLimit, query: geoQuery, signal: controller.signal });
         setGeographicListings(Array.isArray(data.items) ? data.items : []);
+        setGeoPage(Number(data.page) || 1);
+        setGeoHasMore(Boolean(data.hasMore));
         const sources = [...new Set((data.items || []).map((item) => item.sourceLabel).filter(Boolean))];
-        setGeoSourceNote(data.cache === "stale" ? `Внешний источник недоступен · показан сохранённый набор · ${sources.join(" · ")}` : data.cache === "hit" ? `Локальный кеш · ${sources.join(" · ")}` : sources.join(" · ") || "Нет результатов в доступных источниках");
+        if (data.sourceErrors?.twogis) setGeoSourceNote(`2ГИС не ответил: ${data.sourceErrors.twogis}. Показываем доступные источники.`);
+        if (!data.sourceErrors?.twogis) setGeoSourceNote(data.cache === "stale" ? `Внешний источник недоступен · показан сохранённый набор · ${sources.join(" · ")}` : data.cache === "hit" ? `Локальный кеш · ${sources.join(" · ")}` : sources.join(" · ") || "Нет результатов в доступных источниках");
         setGeoStatus("ready");
       } catch (error) {
         if (error.name === "AbortError") return;
@@ -138,7 +148,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setGeoSourceNote("Внешний источник недоступен · показываем локальные демо-данные");
         setGeoStatus("fallback");
       }
-    }, 350);
+    }, 900);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [activeCategory, searchOrigin, radiusLimit, geoQuery]);
 
@@ -159,6 +169,8 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setEducationPage(data.page || 1);
         setEducationTotal(Number(data.total || 0));
         setEducationHasMore(Boolean(data.hasMore));
+        if (data.status === "failed") setGeoSourceNote(`2ГИС поиск не выполнен: ${(data.errors || []).join("; ") || "проверьте ключ Places API"}`);
+        else
         setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · страница ${data.page} · найдено по запросу: ${Number(data.total || 0)}${data.hasMore ? " · можно загрузить ещё" : data.total > (data.pageLimit || 5) * (data.pageSize || 10) ? " · показан лимит демо-ключа" : ""}`);
         setGeoStatus("ready");
       } catch (error) {
@@ -167,7 +179,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setGeoSourceNote(error.message || "2ГИС временно не отвечает. Повторите поиск позже.");
         setGeoStatus("fallback");
       }
-    }, 650);
+    }, 1000);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [activeCategory, geoQuery]);
   useEffect(() => {
@@ -207,6 +219,26 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       "Exam prep": "подготовка к экзаменам Актау"
     };
     setSearch(searchTerms[nextType] || searchTerms.All);
+  }
+  async function loadMoreGeographic() {
+    if (!geoHasMore || geoMoreLoading) return;
+    const nextPage = geoPage + 1;
+    setGeoMoreLoading(true);
+    try {
+      const data = await loadGeographicListings({ category: activeCategory || "places", center: searchOrigin.coordinates, radiusKm: radiusLimit, query: geoQuery, page: nextPage });
+      setGeographicListings((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        for (const item of data.items || []) byId.set(item.id, item);
+        return [...byId.values()];
+      });
+      setGeoPage(Number(data.page) || nextPage);
+      setGeoHasMore(Boolean(data.hasMore));
+      if (data.sourceErrors?.twogis) setGeoSourceNote(`2ГИС не ответил: ${data.sourceErrors.twogis}. Показываем доступные источники.`);
+    } catch (error) {
+      setGeoSourceNote(error.message || "Не удалось загрузить следующую страницу поиска.");
+    } finally {
+      setGeoMoreLoading(false);
+    }
   }
   async function loadMoreEducation() {
     if (!educationHasMore || educationMoreLoading) return;
@@ -393,6 +425,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       <div className="mapRadiusToolbar"><label htmlFor="aktau-search-radius">Радиус поиска <strong>{radiusKm} км</strong></label><input id="aktau-search-radius" type="range" min="1" max="25" step="1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))} /><span>от точки: {searchOrigin.address}</span></div>
       <p className="geoSourceNote" role="status">{activeCategory === "education" && <><a href="https://2gis.kz/aktau" target="_blank" rel="noreferrer">Данные предоставлены 2ГИС</a> · </>}{geoSourceNote} · © OpenStreetMap contributors</p>
       <DiscoveryFilters types={categories} selectedType={type} onTypeChange={handleTypeChange} sort={sort} onSortChange={setSort} />
+      {activeCategory === "places" && geoHasMore && <button type="button" className="educationLoadMore" disabled={geoMoreLoading} onClick={loadMoreGeographic}>{geoMoreLoading ? "Загружаем из 2ГИС…" : `Показать ещё · страница ${geoPage + 1} из 5`}</button>}
       {activeCategory === "education" && <EducationFilters listings={source} value={educationFilters} onChange={setEducationFilters} />}
       {activeCategory === "education" && educationHasMore && <button type="button" className="educationLoadMore" disabled={educationMoreLoading} onClick={loadMoreEducation}>{educationMoreLoading ? "Загружаем из 2ГИС…" : `Показать ещё · страница ${educationPage + 1} из 5`}</button>}
       {activeCategory === "jobs" && <><JobsWorkspace profile={jobsLocal.profile} onSaveProfile={jobsLocal.saveProfile} applications={jobsLocal.applications} onUpdateApplication={jobsLocal.updateApplicationStatus} /><JobFilters value={jobFilters} onChange={setJobFilters} /></>}

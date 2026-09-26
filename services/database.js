@@ -27,6 +27,7 @@ const memory = {
   subscriptionRequests: [],
   accessAudit: [],
   workspaces: [],
+  cachedRequests: new Map(),
   neighborhoodState: null
 };
 
@@ -1381,6 +1382,49 @@ async function updateUserAccess({ userId, actorId = null, updates, allowRole = f
   }
 }
 
+async function getCachedRequest({ cacheKey, source }) {
+  await initializeDatabase();
+  if (!cacheKey || !source) return null;
+  if (pool) {
+    const result = await pool.query(
+      "SELECT response FROM cached_requests WHERE cache_key = $1 AND source = $2 AND expires_at > NOW() LIMIT 1",
+      [cacheKey, source]
+    );
+    return result.rows[0]?.response || null;
+  }
+  const key = `${source}:${cacheKey}`;
+  const entry = memory.cachedRequests.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    memory.cachedRequests.delete(key);
+    return null;
+  }
+  return entry.response;
+}
+
+let nextCacheCleanupAt = 0;
+async function saveCachedRequest({ cacheKey, source, request, response, ttlMs }) {
+  await initializeDatabase();
+  if (!cacheKey || !source || !Number.isFinite(Number(ttlMs)) || Number(ttlMs) <= 0) return;
+  const expiresAt = new Date(Date.now() + Number(ttlMs)).toISOString();
+  if (pool) {
+    await pool.query(
+      `INSERT INTO cached_requests (cache_key, source, request, response, expires_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5)
+       ON CONFLICT (cache_key) DO UPDATE SET source = EXCLUDED.source, request = EXCLUDED.request,
+         response = EXCLUDED.response, expires_at = EXCLUDED.expires_at, created_at = NOW()`,
+      [cacheKey, source, JSON.stringify(request || {}), JSON.stringify(response), expiresAt]
+    );
+    if (Date.now() >= nextCacheCleanupAt) {
+      nextCacheCleanupAt = Date.now() + 60 * 60 * 1000;
+      await pool.query("DELETE FROM cached_requests WHERE source = $1 AND expires_at < NOW() - INTERVAL '7 days'", [source]);
+    }
+    return;
+  }
+  const key = `${source}:${cacheKey}`;
+  memory.cachedRequests.set(key, { response, expiresAt: Date.parse(expiresAt) });
+  if (memory.cachedRequests.size > 1000) memory.cachedRequests.delete(memory.cachedRequests.keys().next().value);
+}
+
 async function closeDatabase() {
   if (pool) await pool.end();
 }
@@ -1415,6 +1459,8 @@ module.exports = {
   listAccessUsers,
   requestSubscription,
   updateUserAccess,
+  getCachedRequest,
+  saveCachedRequest,
   closeDatabase,
   initializeDatabase,
   getDatabaseStatus,

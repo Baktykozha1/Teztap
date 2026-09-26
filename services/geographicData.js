@@ -89,12 +89,17 @@ function normalize2GISEducation(item, center = AKTAU) {
 // Adapters keep the UI independent from providers. Public datasets and user/organization
 // records can be added by implementing list(); all output passes through normalizeRecord.
 const adapters = {
-  twogis: { name: "2ГИС Places API", async list({ category, center, radiusKm, query = "" }) {
+  twogis: { name: "2ГИС · Places API", async list({ category, center, radiusKm, query = "", page = 1, signal }) {
     // 2ГИС is the organization directory for Places and education; it does not
     // invent vacancies, tutor schedules, service prices, or marketplace posts.
     if (!query.trim() || !["all", "places", "education", "services"].includes(category)) return [];
-    const result = await search2GISBusinesses({ query, center, radiusKm });
-    return result.items.map((item) => {
+    const result = await search2GISBusinesses({ query, center, radiusKm, page, signal });
+    if (["failed", "not_configured"].includes(result.status) && !result.items.length) {
+      const error = new Error(result.errors?.[0] || (result.status === "not_configured" ? "2GIS key is not configured" : "2GIS search failed"));
+      error.source = "2ГИС · Places API";
+      throw error;
+    }
+    const normalizedItems = result.items.map((item) => {
       const categoryText = `${item.categoryLabel || ""} ${query}`.toLowerCase();
       const resolvedCategory = category === "all" ? "places" : category;
       const subtype = resolvedCategory === "education"
@@ -114,6 +119,9 @@ const adapters = {
         education: resolvedCategory === "education" ? { subjects: [], qualifications: [], experienceYears: null, format: "Offline", lessonType: "Group", schedule: null } : null
       }, { center, source: "2gis", sourceLabel: "2ГИС · Places API" });
     }).filter(Boolean);
+    normalizedItems.hasMore = Boolean(result.hasMore);
+    normalizedItems.total = Number(result.total) || normalizedItems.length;
+    return normalizedItems;
   } },
   osm: { name: "OpenStreetMap", async list({ category, center, radiusKm }) {
     const layers = category === "all" ? DISCOVERY_CATEGORIES : [category];
@@ -274,13 +282,14 @@ function invalidateGeographicCache(category) {
   }
 }
 
-async function discoverGeographicRecords({ category, center = AKTAU, radiusKm = 10, query = "" }) {
+async function discoverGeographicRecords({ category, center = AKTAU, radiusKm = 10, query = "", page = 1, signal }) {
   const safeRadius = Math.max(1, Math.min(25, Number(radiusKm) || 10));
   const safeQuery = String(query || "").trim().slice(0, 160);
-  const key = JSON.stringify([category || "all", center.lat, center.lng, safeRadius, safeQuery.toLocaleLowerCase()]);
+  const safePage = Math.max(1, Math.min(5, Math.floor(Number(page) || 1)));
+  const key = JSON.stringify([category || "all", Number(center.lat).toFixed(3), Number(center.lng).toFixed(3), safeRadius, safeQuery.toLocaleLowerCase(), safePage]);
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return { ...cached.value, cache: "hit" };
-  const settled = await Promise.allSettled(Object.values(adapters).map((adapter) => adapter.list({ category, center, radiusKm: safeRadius, query: safeQuery })));
+  const settled = await Promise.allSettled(Object.values(adapters).map((adapter) => adapter.list({ category, center, radiusKm: safeRadius, query: safeQuery, page: safePage, signal })));
   const records = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const externalFailed = settled.slice(0, 4).some((result) => result.status === "rejected");
   if (externalFailed && cached?.value?.items?.length) {
@@ -289,7 +298,8 @@ async function discoverGeographicRecords({ category, center = AKTAU, radiusKm = 
   const byId = new Map(records.map((record) => [record.id, record]));
   const items = [...byId.values()].filter((record) => record.distanceKm <= safeRadius)
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
-  const value = { items, sources: Object.values(adapters).map((adapter) => adapter.name), fetchedAt: new Date().toISOString(), attribution: "© OpenStreetMap contributors", staleSourceFallback: externalFailed && Boolean(cached?.value) };
+  const geoPageResult = settled[0]?.status === "fulfilled" ? settled[0].value : null;
+  const value = { items, page: safePage, pageSize: Number(process.env.TWOGIS_PAGE_SIZE) || 50, pageLimit: 5, hasMore: Boolean(geoPageResult?.hasMore), total: Number(geoPageResult?.total) || items.length, sourceErrors: { twogis: settled[0]?.status === "rejected" ? String(settled[0].reason?.message || "2GIS unavailable") : null }, sources: Object.values(adapters).map((adapter) => adapter.name), fetchedAt: new Date().toISOString(), attribution: "© OpenStreetMap contributors", staleSourceFallback: externalFailed && Boolean(cached?.value) };
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return { ...value, cache: externalFailed && cached?.value ? "stale" : "miss" };
 }

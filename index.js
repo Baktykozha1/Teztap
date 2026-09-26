@@ -277,14 +277,19 @@ app.get("/api/discovery", async (req, res) => {
   const category = String(req.query.category || "all");
   const center = { lat: Number(req.query.lat ?? AKTAU.lat), lng: Number(req.query.lng ?? AKTAU.lng) };
   const radiusKm = Number(req.query.radiusKm || 10);
+  const page = Math.max(1, Math.min(5, Math.floor(Number(req.query.page) || 1)));
   if (!categories.has(category) || !Number.isFinite(center.lat) || Math.abs(center.lat) > 90 || !Number.isFinite(center.lng) || Math.abs(center.lng) > 180 || !Number.isFinite(radiusKm)) {
     return res.status(400).json({ error: "Invalid geographic search parameters" });
   }
+  const controller = new AbortController();
+  req.on("aborted", () => controller.abort());
+  res.on("close", () => { if (!res.writableEnded) controller.abort(); });
   try {
-    const data = await discoverGeographicRecords({ category, center, radiusKm, query: String(req.query.query || "").slice(0, 160) });
+    const data = await discoverGeographicRecords({ category, center, radiusKm, page, signal: controller.signal, query: String(req.query.query || "").slice(0, 160) });
     res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
     res.json({ ...data, center, radiusKm: Math.max(1, Math.min(25, radiusKm)) });
   } catch (error) {
+    if (controller.signal.aborted) return;
     res.status(503).json({ error: "Geographic sources are temporarily unavailable", detail: error.message });
   }
 });
@@ -384,14 +389,19 @@ app.get("/api/education/listings", async (req, res, next) => {
 
 app.get("/api/education/2gis", async (req, res, next) => {
   const query = String(req.query.q || "").trim().slice(0, 160);
+  const page = Math.max(1, Math.min(5, Math.floor(Number(req.query.page) || 1)));
   if (query.length < 2) return res.status(400).json({ error: "Введите направление или тип обучения." });
+  const controller = new AbortController();
+  req.on("aborted", () => controller.abort());
+  res.on("close", () => { if (!res.writableEnded) controller.abort(); });
   try {
-    const result = await search2GISBusinesses({ query, center: AKTAU, radiusKm: 25, sort: "rating", branchOnly: true, minRating: 3.5 });
+    const result = await search2GISBusinesses({ query, center: AKTAU, radiusKm: 25, sort: "rating", branchOnly: true, minRating: 3.5, page, signal: controller.signal });
     const userItems = (await listPublicEducationListings({ city: "Актау", limit: 200 })).map((item) => normalizeRecord(item, { center: AKTAU, source: "user_generated", sourceLabel: "Объявление пользователя · не проверено" })).filter(Boolean);
     const items = result.items.map((item) => normalize2GISEducation(item, AKTAU)).filter(Boolean);
     res.set("Cache-Control", "no-store");
-    res.json({ ...result, items, total: items.length, page: 1, pageSize: items.length, pageLimit: 1, hasMore: false, userItems, center: AKTAU, radiusKm: 25, minRating: 3.5, attribution: "Данные предоставлены 2ГИС", attributionUrl: "https://2gis.kz/aktau" });
+    res.json({ ...result, items, total: result.total || items.length, page: result.page || page, pageSize: result.pageSize || items.length, pageLimit: result.pageLimit || 5, hasMore: Boolean(result.hasMore), userItems, center: AKTAU, radiusKm: 25, minRating: 3.5, attribution: "Данные предоставлены 2ГИС", attributionUrl: "https://2gis.kz/aktau" });
   } catch (error) {
+    if (controller.signal.aborted) return;
     res.status(502).json({ error: "2ГИС временно не ответил на поиск обучения.", detail: error.status || null });
   }
 });

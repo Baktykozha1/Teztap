@@ -1,8 +1,8 @@
 import directory from "../../data/discovery.js";
 export const { categories, listings } = directory;
 
-export async function loadGeographicListings({ category, center, radiusKm, query = "", signal }) {
-  const params = new URLSearchParams({ category, lat: String(center.lat), lng: String(center.lng), radiusKm: String(radiusKm), query });
+export async function loadGeographicListings({ category, center, radiusKm, query = "", page = 1, signal }) {
+  const params = new URLSearchParams({ category, lat: String(center.lat), lng: String(center.lng), radiusKm: String(radiusKm), query, page: String(page) });
   const response = await fetch(`/api/discovery?${params}`, { signal, headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`Geo search failed (${response.status})`);
   return response.json();
