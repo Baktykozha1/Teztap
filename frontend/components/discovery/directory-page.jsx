@@ -124,6 +124,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       setGeographicListings([]);
       setGeoPage(1);
       setGeoHasMore(false);
+      setGeoMoreLoading(false);
       setGeoSourceNote("Укажите тип заведения, чтобы запустить расширенный поиск 2ГИС по сетке 5×5.");
       setGeoStatus("ready");
       return undefined;
