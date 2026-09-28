@@ -132,15 +132,48 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
     const timer = window.setTimeout(async () => {
       setGeoPage(1);
       setGeoHasMore(false);
+      setGeoMoreLoading(false);
       setGeoStatus("loading");
       try {
         const data = await loadGeographicListings({ category: activeCategory || "all", center: searchOrigin.coordinates, radiusKm: radiusLimit, query: geoQuery, signal: controller.signal });
-        setGeographicListings(Array.isArray(data.items) ? data.items : []);
-        setGeoPage(Number(data.page) || 1);
-        setGeoHasMore(Boolean(data.hasMore));
+        let loadedItems = Array.isArray(data.items) ? data.items : [];
+        let currentPage = Number(data.page) || 1;
+        let hasMore = Boolean(data.hasMore);
+        setGeographicListings(loadedItems);
+        setGeoPage(currentPage);
+        setGeoHasMore(hasMore);
         const sources = [...new Set((data.items || []).map((item) => item.sourceLabel).filter(Boolean))];
         if (data.sourceErrors?.twogis) setGeoSourceNote(`2ГИС не ответил: ${data.sourceErrors.twogis}. ${!(data.items || []).length ? "Показываем демонстрационные примеры TezTap." : "Показываем доступные источники."}`);
         if (!data.sourceErrors?.twogis) setGeoSourceNote(data.cache === "stale" ? `Внешний источник недоступен · показан сохранённый набор · ${sources.join(" · ")}` : data.cache === "hit" ? `Локальный кеш · ${sources.join(" · ")}` : sources.join(" · ") || "Нет результатов в доступных источниках");
+        if (activeCategory === "places" && hasMore) {
+          setGeoMoreLoading(true);
+          const pageLimit = Math.min(5, Number(data.pageLimit) || 5);
+          while (hasMore && currentPage < pageLimit && !controller.signal.aborted) {
+            const nextPage = currentPage + 1;
+            try {
+              const nextData = await loadGeographicListings({ category: "places", center: searchOrigin.coordinates, radiusKm: radiusLimit, query: geoQuery, page: nextPage, signal: controller.signal });
+              const byId = new Map(loadedItems.map((item) => [item.id, item]));
+              for (const item of nextData.items || []) byId.set(item.id, item);
+              loadedItems = [...byId.values()];
+              currentPage = Number(nextData.page) || nextPage;
+              hasMore = Boolean(nextData.hasMore);
+              setGeographicListings(loadedItems);
+              setGeoPage(currentPage);
+              setGeoHasMore(hasMore);
+              if (nextData.sourceErrors?.twogis) {
+                setGeoSourceNote(`2ГИС временно не ответил на странице ${currentPage}; показаны уже загруженные результаты.`);
+                break;
+              }
+              setGeoSourceNote(`Загружено ${loadedItems.length} уникальных мест · страницы 1–${currentPage} из ${pageLimit}`);
+            } catch (pageError) {
+              if (pageError.name === "AbortError") return;
+              setGeoSourceNote(`Не удалось загрузить страницу ${nextPage}; показаны уже загруженные результаты.`);
+              break;
+            }
+          }
+          if (controller.signal.aborted) return;
+          setGeoMoreLoading(false);
+        }
         setGeoStatus(data.sourceErrors?.twogis && !(data.items || []).length ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;
