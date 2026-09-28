@@ -71,6 +71,7 @@ PORT=5000
 FRONTEND_PORT=3000
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/venturescope
 AUTH_SECRET=replace-with-a-long-random-secret
+TWOGIS_MAPGL_KEY=
 AUTH_TOKEN_TTL_SECONDS=604800
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-flash-lite-latest
@@ -80,6 +81,8 @@ OVERPASS_URLS=https://overpass-api.de/api/interpreter,https://overpass.kumi.syst
 OVERPASS_TIMEOUT_MS=7000
 PRICE_PAGE_TIMEOUT_MS=3500
 ```
+
+`TWOGIS_MAPGL_KEY` enables the live Aktau traffic map at `/traffic`. Use a 2GIS key with Map Tiles API access and restrict it to the app's local/deployed domains in Platform Manager. The key is intentionally delivered only by `/api/twogis/mapgl-config` for the browser MapGL SDK; do not reuse a server-only key unless its service permissions and domain restrictions are configured for browser use.
 
 Frontend variables are passed by the dev runner:
 

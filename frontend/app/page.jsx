@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Bell, BriefcaseBusiness, Building2, GraduationCap, Heart, Home, Map, MapPin, MapPinned, Search, Sparkles, Store, UserRound, Wrench, X } from "lucide-react";
+import { Bell, BriefcaseBusiness, Building2, GraduationCap, Heart, Home, Map, MapPin, MapPinned, Search, Sparkles, Store, TrafficCone, UserRound, Wrench, X } from "lucide-react";
 import { useWorkspace } from "../components/workspace-provider";
 
 const features = [
@@ -12,7 +12,8 @@ const features = [
   { key: "services", title: "Услуги рядом", description: "Мастера, няни, уборка и специалисты красоты.", href: "/services", icon: Wrench },
   { key: "marketplace", title: "Маркетплейс", description: "Покупайте, продавайте и арендуйте в Актау.", href: "/marketplace", icon: Store },
   { key: "places", title: "Места", description: "Кафе, клиники, спорт и досуг на карте.", href: "/places", icon: MapPinned },
-  { key: "neighborhood", title: "Мой район", description: "Новости дома, события и обсуждения соседей на карте.", href: "/neighborhood", icon: Building2 }
+  { key: "neighborhood", title: "Мой район", description: "Новости дома, события и обсуждения соседей на карте.", href: "/neighborhood", icon: Building2 },
+  { key: "traffic", title: "Пробки", description: "Текущая загруженность дорог Актау на карте 2ГИС.", href: "/traffic", icon: TrafficCone }
 ];
 
 export default function HomePage() {
@@ -64,7 +65,7 @@ export default function HomePage() {
         </form>
 
         <section className="mainFeatures" aria-labelledby="features-heading">
-          <div className="mainFeaturesHeading"><div><span>ОТКРОЙТЕ ДЛЯ СЕБЯ</span><h2 id="features-heading">Что вам нужно сегодня?</h2></div><span className="featureCount">07 функций</span></div>
+          <div className="mainFeaturesHeading"><div><span>ОТКРОЙТЕ ДЛЯ СЕБЯ</span><h2 id="features-heading">Что вам нужно сегодня?</h2></div><span className="featureCount">{String(features.length).padStart(2, "0")} функций</span></div>
           <div className="consumerFeatureGrid">
             {features.map((feature, index) => {
               const Icon = feature.icon;

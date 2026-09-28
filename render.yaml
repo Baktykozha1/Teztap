@@ -23,6 +23,8 @@ services:
         sync: false
       - key: TWOGIS_API_KEY
         sync: false
+      - key: TWOGIS_MAPGL_KEY
+        sync: false
       - key: TWOGIS_ENABLE_TILING
         value: "true"
       - key: TWOGIS_TILE_GRID_SIZE

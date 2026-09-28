@@ -69,6 +69,7 @@ const frontendPort = process.env.FRONTEND_PORT || 3000;
 const frontendRoutes = new Set([
   "/assistant",
   "/map",
+  "/traffic",
   "/investors",
   "/reports",
   "/history",
@@ -156,7 +157,7 @@ app.use((req, res, next) => {
     if (!req.user?.id) return res.status(401).json({ error: "Войдите в аккаунт TezTap." });
     return next();
   }
-  const publicRead = req.method === "GET" && ["", "/api/health", "/api/options", "/api/access", "/api/discovery", "/api/geocode", "/api/education/listings", "/api/education/2gis", "/api/jobs/listings"].includes(pathname);
+  const publicRead = req.method === "GET" && ["", "/api/health", "/api/options", "/api/access", "/api/discovery", "/api/geocode", "/api/education/listings", "/api/education/2gis", "/api/jobs/listings", "/api/twogis/mapgl-config"].includes(pathname);
   const publicAuth = req.method === "POST" && ["/api/auth/login", "/api/auth/register"].includes(pathname);
   if (publicRead || publicAuth) return next();
   const rule = endpointPermissions.find(([pattern]) => pattern.test(pathname));
@@ -174,6 +175,14 @@ app.get("/api/access", (req, res) => {
     featurePlans: FEATURE_PLANS,
     planFeatures: PLAN_FEATURES
   });
+});
+
+app.get("/api/twogis/mapgl-config", (_req, res) => {
+  // MapGL access keys are browser-visible by design. Configure a separate key
+  // restricted to the application's domains and enabled for Map Tiles API.
+  const key = String(process.env.TWOGIS_MAPGL_KEY || "").trim();
+  res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+  res.json({ enabled: Boolean(key), key: key || null });
 });
 
 app.post("/api/subscription-requests", async (req, res, next) => {

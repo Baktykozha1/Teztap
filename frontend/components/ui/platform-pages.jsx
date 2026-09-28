@@ -22,7 +22,8 @@ import {
   Store,
   Building2,
   Heart,
-  UserRound
+  UserRound,
+  TrafficCone
 } from "lucide-react";
 import { loadLastAnalysis } from "../../lib/analysis-store";
 import { useAccess } from "../access-provider";
@@ -47,6 +48,7 @@ export const superAppRoutes = [
   { href: "/services", label: "Услуги рядом", icon: Wrench },
   { href: "/marketplace", label: "Маркетплейс", icon: Store },
   { href: "/places", label: "Места", icon: MapPinned },
+  { href: "/traffic", label: "Пробки", icon: TrafficCone },
   { href: "/neighborhood", label: "Мой район", icon: Building2 },
   { href: "/favorites", label: "Избранное", icon: Heart },
   { href: "/profile", label: "Профиль", icon: UserRound }
