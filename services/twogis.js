@@ -4,6 +4,8 @@ const { getBusinessProfile } = require("../data/competitors");
 const { getCachedRequest, saveCachedRequest } = require("./database");
 const crypto = require("node:crypto");
 const API_KEY = String(process.env.TWOGIS_API_KEY || "").trim();
+// Separate persisted result caches after key rotation so the first search uses the new key.
+const API_KEY_CACHE_ID = crypto.createHash("sha256").update(API_KEY || "missing-key").digest("hex").slice(0, 12);
 const TIMEOUT_MS = Math.max(2000, Math.min(20000, Number(process.env.TWOGIS_TIMEOUT_MS) || 9000));
 const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TWOGIS_CACHE_TTL_MS) || 300_000);
 const PERSISTENT_CACHE_TTL_MS = Math.max(CACHE_TTL_MS, Number(process.env.TWOGIS_PERSISTENT_CACHE_TTL_MS) || 12 * 60 * 60 * 1000);
@@ -185,7 +187,7 @@ async function search2GISBusinesses({ query, center, radiusKm = 10, signal, tile
   if (!API_KEY || !safeQuery || !isValidPoint(center)) return { items: [], status: API_KEY ? "skipped" : "not_configured", source: "2GIS Places API" };
   const gridSize = Math.max(1, Math.min(9, Number(tileGridSize) || GRID_SIZE));
   const safePage = Math.max(1, Math.min(5, Math.floor(Number(page) || 1)));
-  const cacheKey = JSON.stringify([safeQuery.toLocaleLowerCase("ru-RU"), Number(center.lat).toFixed(3), Number(center.lng).toFixed(3), safeRadius, gridSize, Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : "all", sort, branchOnly, minRating, safePage]);
+  const cacheKey = JSON.stringify([API_KEY_CACHE_ID, safeQuery.toLocaleLowerCase("ru-RU"), Number(center.lat).toFixed(3), Number(center.lng).toFixed(3), safeRadius, gridSize, Number.isFinite(MAX_RESULTS) ? MAX_RESULTS : "all", sort, branchOnly, minRating, safePage]);
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) { if (onBatch) onBatch(cached.value.items); return { ...cached.value, cache: "hit" }; }
   if (pendingSearches.has(cacheKey)) {

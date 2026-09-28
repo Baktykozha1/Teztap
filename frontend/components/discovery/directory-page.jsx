@@ -175,6 +175,8 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
           if (controller.signal.aborted) return;
           setGeoMoreLoading(false);
         }
+        if (activeCategory === "places" && (data.cache === "hit" || data.providerCache === "persistent-hit" || data.providerCache === "hit")) setGeoSourceNote((current) => `${current} · показан кеш, запрос к 2ГИС не выполнялся`);
+        else if (activeCategory === "places" && data.providerCache === "miss") setGeoSourceNote((current) => `${current} · выполнен запрос к 2ГИС`);
         setGeoStatus(data.sourceErrors?.twogis && !(data.items || []).length ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;
@@ -205,6 +207,8 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
         setEducationHasMore(Boolean(data.hasMore));
         if (data.status === "failed") setGeoSourceNote(`2ГИС поиск не выполнен: ${(data.errors || []).join("; ") || "проверьте ключ Places API"}. Показываем демонстрационные примеры TezTap.`);
         else setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · страница ${data.page} · найдено по запросу: ${Number(data.total || 0)}${data.hasMore ? " · можно загрузить ещё" : data.total > (data.pageLimit || 5) * (data.pageSize || 10) ? " · показан лимит демо-ключа" : ""}`);
+        if (data.cache === "persistent-hit" || data.cache === "hit") setGeoSourceNote((current) => `${current} · показан кеш, запрос к 2ГИС не выполнялся`);
+        else if (data.cache === "miss") setGeoSourceNote((current) => `${current} · выполнен запрос к 2ГИС`);
         setGeoStatus(data.status === "failed" ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;

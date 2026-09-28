@@ -121,6 +121,7 @@ const adapters = {
     }).filter(Boolean);
     normalizedItems.hasMore = Boolean(result.hasMore);
     normalizedItems.total = Number(result.total) || normalizedItems.length;
+    normalizedItems.providerCache = result.cache || "miss";
     return normalizedItems;
   } },
   osm: { name: "OpenStreetMap", async list({ category, center, radiusKm }) {
@@ -300,6 +301,7 @@ async function discoverGeographicRecords({ category, center = AKTAU, radiusKm = 
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
   const geoPageResult = settled[0]?.status === "fulfilled" ? settled[0].value : null;
   const value = { items, page: safePage, pageSize: Number(process.env.TWOGIS_PAGE_SIZE) || 50, pageLimit: 5, hasMore: Boolean(geoPageResult?.hasMore), total: Number(geoPageResult?.total) || items.length, sourceErrors: { twogis: settled[0]?.status === "rejected" ? String(settled[0].reason?.message || "2GIS unavailable") : null }, sources: Object.values(adapters).map((adapter) => adapter.name), fetchedAt: new Date().toISOString(), attribution: "© OpenStreetMap contributors", staleSourceFallback: externalFailed && Boolean(cached?.value) };
+  value.providerCache = geoPageResult?.providerCache || null;
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return { ...value, cache: externalFailed && cached?.value ? "stale" : "miss" };
 }
