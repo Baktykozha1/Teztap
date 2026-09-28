@@ -276,6 +276,14 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
   }
   function handleTypeChange(nextType) {
     setType(nextType);
+    if (activeCategory === "places") {
+      // A selected Places category is also the 2GIS search term. Clear any old
+      // free-text query so switching categories does not leave stale results.
+      setRequestIntent(null);
+      const nextLabel = config.places.types.find((option) => option.key === nextType)?.label || "";
+      setSearch(nextLabel);
+      return;
+    }
     if (activeCategory !== "education" || requestIntent) return;
     const searchTerms = {
       All: "репетиторы и учебные центры",
@@ -495,7 +503,7 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       <section className="directoryToolbar"><label className="searchField"><Search size={17} /><span className="srOnly">Поиск объявлений</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название, услуга или ключевое слово" /></label><LocationSearch value={district} onChange={setDistrict} onLocationSelect={selectAddressOnMap} /></section>
       <div className="mapRadiusToolbar"><label htmlFor="aktau-search-radius">Радиус поиска <strong>{radiusKm} км</strong></label><input id="aktau-search-radius" type="range" min="1" max="25" step="1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))} /><span>от точки: {searchOrigin.address}</span></div>
       <p className="geoSourceNote" role="status">{activeCategory === "education" && <><a href="https://2gis.kz/aktau" target="_blank" rel="noreferrer">Данные предоставлены 2ГИС</a> · </>}{geoSourceNote} · © OpenStreetMap contributors</p>
-      <DiscoveryFilters types={categories} selectedType={type} onTypeChange={handleTypeChange} sort={sort} onSortChange={setSort} />
+      <DiscoveryFilters types={categories} selectedType={type} onTypeChange={handleTypeChange} sort={sort} onSortChange={setSort} showAll={activeCategory !== "places"} />
       {activeCategory === "places" && geoHasMore && <button type="button" className="educationLoadMore" disabled={geoMoreLoading} onClick={loadMoreGeographic}>{geoMoreLoading ? "Загружаем из 2ГИС…" : `Показать ещё · страница ${geoPage + 1} из 5`}</button>}
       {activeCategory === "education" && <EducationFilters listings={source} value={educationFilters} onChange={setEducationFilters} />}
       {activeCategory === "education" && educationHasMore && <button type="button" className="educationLoadMore" disabled={educationMoreLoading} onClick={loadMoreEducation}>{educationMoreLoading ? "Загружаем из 2ГИС…" : `Показать ещё · страница ${educationPage + 1} из 5`}</button>}

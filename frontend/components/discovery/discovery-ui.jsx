@@ -23,8 +23,8 @@ export function LocationSearch({ value, onChange, onLocationSelect }) {
   );
 }
 
-export function DiscoveryFilters({ types, selectedType, onTypeChange, sort, onSortChange }) {
-  const options = [{ value: "All", label: "Все" }, ...types.map((type) => typeof type === "string" ? { value: type, label: type } : { value: type.key, label: type.label })];
+export function DiscoveryFilters({ types, selectedType, onTypeChange, sort, onSortChange, showAll = true }) {
+  const options = [...(showAll ? [{ value: "All", label: "Все" }] : []), ...types.map((type) => typeof type === "string" ? { value: type, label: type } : { value: type.key, label: type.label })];
   return (
     <div className="discoveryFilters">
       <div className="discoveryTypeFilters" aria-label="Фильтр по категории">
