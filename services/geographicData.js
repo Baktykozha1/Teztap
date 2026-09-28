@@ -63,6 +63,11 @@ function normalize2GISEducation(item, center = AKTAU) {
   const titleText = String(item.title || "").toLocaleLowerCase("ru-RU");
   const rubricText = String(item.categoryLabel || "").toLocaleLowerCase("ru-RU");
   const text = `${titleText} ${rubricText}`;
+  const educationalEvidence = /(\u0440\u0435\u043f\u0435\u0442\u0438\u0442\u043e\u0440|\u043f\u0440\u0435\u043f\u043e\u0434\u0430\u0432|\u0448\u043a\u043e\u043b|\u043b\u0438\u0446\u0435\u0439|\u0433\u0438\u043c\u043d\u0430\u0437|\u043a\u043e\u043b\u043b\u0435\u0434\u0436|\u0443\u043d\u0438\u0432\u0435\u0440\u0441\u0438\u0442\u0435\u0442|\u0430\u043a\u0430\u0434\u0435\u043c|\u043e\u0431\u0440\u0430\u0437\u043e\u0432\u0430\u0442|\u0443\u0447\u0435\u0431|\u043e\u0431\u0443\u0447|\u043a\u0443\u0440\u0441|\u044f\u0437\u044b\u043a|\u044d\u043a\u0437\u0430\u043c\u0435\u043d|\u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432|\u0434\u0435\u0442\u0441\u043a.*\u0446\u0435\u043d\u0442|school|education|tutor|teacher|course|language|college|university|academy|learning|training|exam prep|driving school)/i.test(text);
+  if (!educationalEvidence) return null;
+  const titleEducationEvidence = /(репетитор|преподав|школ|лицей|гимназ|колледж|университет|академ|учебн|образоват|языков|school|education|tutor|teacher|college|university|academy|learning center)/i.test(titleText);
+  const rubricEducationEvidence = /(школ|лицей|гимназ|колледж|университет|академ|учебн|образоват|помощь в обучении|репетитор|языковая школа|центр раннего развития|курсы английского|подготовка к экзамен|school|education|tutor|language school|learning center)/i.test(rubricText);
+  if (!titleEducationEvidence && !rubricEducationEvidence) return null;
   const explicitInstitution = /центр|школ|дворец|колледж|лицей|гимнази/.test(titleText);
   const subtype = /(^|[^а-яё])ент([^а-яё]|$)|экзамен|подготовк к экзамен/.test(titleText) ? "Exam prep"
     : /языков|language|английск|немецк|корейск|китайск/.test(titleText) ? "Language schools"

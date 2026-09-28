@@ -195,20 +195,50 @@ export default function DirectoryPage({ category, favoritesOnly = false, initial
       setGeoStatus("loading");
       setEducationPage(1);
       setEducationHasMore(false);
+      setEducationMoreLoading(false);
       try {
         const params = new URLSearchParams({ q: geoQuery || "репетиторы и учебные центры", page: "1" });
         const response = await fetch(`/api/education/2gis?${params}`, { signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" } });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Не удалось получить каталог 2ГИС.");
         const items = Array.isArray(data.items) ? data.items : [];
-        setGeographicListings([...items, ...(data.userItems || [])]);
-        setEducationPage(data.page || 1);
-        setEducationTotal(Number(data.total || 0));
-        setEducationHasMore(Boolean(data.hasMore));
+        const uniqueById = (records) => [...new Map(records.filter((item) => item?.id).map((item) => [String(item.id), item])).values()];
+        let collected = uniqueById([...items, ...(data.userItems || [])]);
+        let currentPage = Number(data.page) || 1;
+        let hasMore = Boolean(data.hasMore);
+        const pageLimit = Math.min(5, Number(data.pageLimit) || 5);
+        setGeographicListings(collected);
+        setEducationPage(currentPage);
+        setEducationTotal(collected.length);
+        setEducationHasMore(hasMore);
         if (data.status === "failed") setGeoSourceNote(`2ГИС поиск не выполнен: ${(data.errors || []).join("; ") || "проверьте ключ Places API"}. Показываем демонстрационные примеры TezTap.`);
-        else setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · страница ${data.page} · найдено по запросу: ${Number(data.total || 0)}${data.hasMore ? " · можно загрузить ещё" : data.total > (data.pageLimit || 5) * (data.pageSize || 10) ? " · показан лимит демо-ключа" : ""}`);
+        else setGeoSourceNote(`Рейтинг 2ГИС от 3,5 · загружено ${collected.length} учебных организаций${hasMore ? " · загружаем следующие страницы" : " · страницы загружены"}`);
         if (data.cache === "persistent-hit" || data.cache === "hit") setGeoSourceNote((current) => `${current} · показан кеш, запрос к 2ГИС не выполнялся`);
         else if (data.cache === "miss") setGeoSourceNote((current) => `${current} · выполнен запрос к 2ГИС`);
+        if (hasMore) setEducationMoreLoading(true);
+        while (hasMore && currentPage < pageLimit && !controller.signal.aborted) {
+          const nextPage = currentPage + 1;
+          try {
+            const nextParams = new URLSearchParams({ q: geoQuery || "репетиторы и учебные центры", page: String(nextPage) });
+            const nextResponse = await fetch(`/api/education/2gis?${nextParams}`, { signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" } });
+            const nextData = await nextResponse.json();
+            if (!nextResponse.ok) throw new Error(nextData.error || "Не удалось загрузить следующую страницу 2ГИС.");
+            collected = uniqueById([...collected, ...(nextData.items || []), ...(nextData.userItems || [])]);
+            currentPage = Number(nextData.page) || nextPage;
+            hasMore = Boolean(nextData.hasMore);
+            setGeographicListings(collected);
+            setEducationPage(currentPage);
+            setEducationTotal(collected.length);
+            setEducationHasMore(hasMore);
+            setGeoSourceNote(`Загружено ${collected.length} образовательных мест · страница ${currentPage} из ${pageLimit}`);
+          } catch (pageError) {
+            if (pageError.name === "AbortError") return;
+            setGeoSourceNote(`Не удалось загрузить страницу ${nextPage}; показаны уже загруженные результаты.`);
+            break;
+          }
+        }
+        if (controller.signal.aborted) return;
+        setEducationMoreLoading(false);
         setGeoStatus(data.status === "failed" ? "fallback" : "ready");
       } catch (error) {
         if (error.name === "AbortError") return;
