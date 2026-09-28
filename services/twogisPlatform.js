@@ -1,4 +1,5 @@
 const API_KEY = process.env.TWOGIS_API_KEY || process.env.DGIS_API_KEY || process.env.TWOGIS_KEY || "";
+const ROUTING_API_KEY = process.env.TWOGIS_ROUTING_API_KEY || API_KEY;
 const CATALOG_BASE = process.env.TWOGIS_API_URL || "https://catalog.api.2gis.com/3.0/items";
 const ROUTING_BASE = process.env.TWOGIS_ROUTING_API_URL || "https://routing.api.2gis.com";
 const TIMEOUT_MS = Number(process.env.TWOGIS_TIMEOUT_MS || 9000);
@@ -48,11 +49,24 @@ async function markers({ query, center, radiusMeters = 5000, limit = 10 }) {
   return catalogRequest("https://catalog.api.2gis.com/3.0/markers", params, { cacheable: true });
 }
 
-async function route({ points, transport = "driving", routeMode = "fastest" }) {
+async function route({ points, transport = "driving", routeMode = "fastest", departureAt }) {
   const routePoints = normalizePoints(points, 2, 8).map(({ lat, lng }) => ({ type: "stop", lat, lon: lng }));
   if (!["driving", "walking", "bicycle", "scooter", "motorcycle", "taxi", "truck"].includes(transport)) throw badRequest("Unsupported transport mode");
   if (!["fastest", "shortest"].includes(routeMode)) throw badRequest("Unsupported route mode");
-  return routingRequest("/routing/7.0.0/global", { points: routePoints, transport, route_mode: routeMode, output: "detailed", locale: "ru" });
+  const body = { points: routePoints, transport, route_mode: routeMode, output: "detailed", locale: "ru" };
+  if (departureAt !== undefined && departureAt !== null) {
+    const utc = Number(departureAt);
+    if (!Number.isInteger(utc) || utc < 1000000000 || utc > 4102444800) throw badRequest("Invalid departure time");
+    body.utc = utc;
+    body.traffic_mode = "statistics";
+  }
+  return requestJson(new URL("/routing/7.0.0/global", ROUTING_BASE), {
+    method: "POST",
+    body,
+    cacheable: true,
+    ttl: departureAt ? 15 * 60 * 1000 : 60000,
+    apiKey: ROUTING_API_KEY
+  });
 }
 
 async function distanceMatrix({ sources, targets, transport = "driving" }) {
@@ -62,7 +76,7 @@ async function distanceMatrix({ sources, targets, transport = "driving" }) {
   const points = [...from, ...to].map(({ lat, lng }) => ({ lat, lon: lng }));
   const url = new URL("/get_dist_matrix", ROUTING_BASE);
   url.searchParams.set("version", "2.0");
-  return requestJson(url, { method: "POST", body: { points, sources: from.map((_, index) => index), targets: to.map((_, index) => index + from.length), transport }, cacheable: true, ttl: 60000 });
+  return requestJson(url, { method: "POST", body: { points, sources: from.map((_, index) => index), targets: to.map((_, index) => index + from.length), transport }, cacheable: true, ttl: 60000, apiKey: ROUTING_API_KEY });
 }
 
 async function isochrone({ center, durations = [600, 1200], transport = "walking" }) {
@@ -92,12 +106,12 @@ async function catalogRequest(path, params, { cacheable = false, ttl = CACHE_TTL
   for (const [name, value] of Object.entries(params || {})) if (value !== undefined && value !== null && value !== "") url.searchParams.set(name, String(value));
   return requestJson(url, { cacheable, ttl });
 }
-async function routingRequest(path, body) { return requestJson(new URL(path, ROUTING_BASE), { method: "POST", body, cacheable: true, ttl: 60000 }); }
+async function routingRequest(path, body) { return requestJson(new URL(path, ROUTING_BASE), { method: "POST", body, cacheable: true, ttl: 60000, apiKey: ROUTING_API_KEY }); }
 
-async function requestJson(url, { method = "GET", body, cacheable = false, ttl = CACHE_TTL_MS } = {}) {
-  if (!API_KEY) throw Object.assign(new Error("2GIS API key is not configured"), { statusCode: 503, code: "TWOGIS_NOT_CONFIGURED" });
-  url.searchParams.set("key", API_KEY);
-  const cacheKey = `${method}:${url.toString().replace(API_KEY, "[key]")}:${body ? JSON.stringify(body) : ""}`;
+async function requestJson(url, { method = "GET", body, cacheable = false, ttl = CACHE_TTL_MS, apiKey = API_KEY } = {}) {
+  if (!apiKey) throw Object.assign(new Error("2GIS API key is not configured"), { statusCode: 503, code: "TWOGIS_NOT_CONFIGURED" });
+  url.searchParams.set("key", apiKey);
+  const cacheKey = `${method}:${url.toString().replace(apiKey, "[key]")}:${body ? JSON.stringify(body) : ""}`;
   const cached = cacheable && cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const controller = new AbortController();

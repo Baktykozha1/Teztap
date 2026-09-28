@@ -32,6 +32,8 @@ const { AKTAU, discoverGeographicRecords, geocodeAktau, reverseGeocodeAktau, inv
 const neighborhood = require("./services/neighborhood");
 const { submitEducationListing, listPublicEducationListings } = require("./services/educationListings");
 const { search2GISBusinesses } = require("./services/twogis");
+const { route: build2GISRoute } = require("./services/twogisPlatform");
+const { extractTrafficRouteGeometry, extractTrafficWaypoints } = require("./services/trafficRouteGeometry");
 const { submitJobListing, listPublicJobListings } = require("./services/jobListings");
 const { buildInvestorReport } = require("./services/export");
 const { getCompetitorSnapshot, getPriceSnapshot } = require("./services/marketSnapshot");
@@ -158,7 +160,7 @@ app.use((req, res, next) => {
     return next();
   }
   const publicRead = req.method === "GET" && ["", "/api/health", "/api/options", "/api/access", "/api/discovery", "/api/geocode", "/api/education/listings", "/api/education/2gis", "/api/jobs/listings", "/api/twogis/mapgl-config"].includes(pathname);
-  const publicAuth = req.method === "POST" && ["/api/auth/login", "/api/auth/register"].includes(pathname);
+  const publicAuth = req.method === "POST" && ["/api/auth/login", "/api/auth/register", "/api/twogis/traffic-route"].includes(pathname);
   if (publicRead || publicAuth) return next();
   const rule = endpointPermissions.find(([pattern]) => pattern.test(pathname));
   if (rule) return requireFeature(rule[1], { anonymous: rule[2] === true })(req, res, next);
@@ -183,6 +185,56 @@ app.get("/api/twogis/mapgl-config", (_req, res) => {
   const key = String(process.env.TWOGIS_MAPGL_KEY || "").trim();
   res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
   res.json({ enabled: Boolean(key), key: key || null });
+});
+
+const trafficRouteRequests = new Map();
+app.post("/api/twogis/traffic-route", async (req, res) => {
+  const caller = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const lastRequestAt = trafficRouteRequests.get(caller) || 0;
+  if (now - lastRequestAt < 10000) {
+    res.set("Retry-After", "10");
+    return res.status(429).json({ error: "Подождите 10 секунд перед следующим прогнозом." });
+  }
+
+  const points = req.body?.points;
+  const departureAt = Number(req.body?.departureAt);
+  const minTime = Math.floor((now - 30 * 24 * 60 * 60 * 1000) / 1000);
+  const maxTime = Math.floor((now + 7 * 24 * 60 * 60 * 1000) / 1000);
+  if (!Array.isArray(points) || points.length !== 2 || !Number.isInteger(departureAt) || departureAt < minTime || departureAt > maxTime) {
+    return res.status(400).json({ error: "Укажите две точки маршрута и дату от 30 дней назад до 7 дней вперёд." });
+  }
+  const validPoint = (point) => Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng)) && Math.abs(Number(point.lat)) <= 90 && Math.abs(Number(point.lng)) <= 180;
+  if (!points.every(validPoint)) return res.status(400).json({ error: "Проверьте координаты начала и конца маршрута." });
+  const fromAktau = points.map((point) => {
+    const lat = (Number(point.lat) - 43.6532) * Math.PI / 180;
+    const lng = (Number(point.lng) - 51.1975) * Math.PI / 180;
+    const a = Math.sin(lat / 2) ** 2 + Math.cos(43.6532 * Math.PI / 180) * Math.cos(Number(point.lat) * Math.PI / 180) * Math.sin(lng / 2) ** 2;
+    return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  });
+  if (fromAktau.some((distance) => distance > 40000)) return res.status(400).json({ error: "Выберите начало и пункт назначения в Актау." });
+
+  trafficRouteRequests.set(caller, now);
+  try {
+    const payload = await build2GISRoute({ points, transport: "driving", routeMode: "fastest", departureAt });
+    const result = payload.result?.[0];
+    if (!result || !Number.isFinite(Number(result.total_duration))) return res.status(502).json({ error: "2ГИС не смог рассчитать прогноз для этих точек." });
+    return res.json({
+      durationSeconds: Number(result.total_duration),
+      durationLabel: result.ui_total_duration || null,
+      distanceMeters: Number(result.total_distance) || null,
+      algorithm: result.algorithm || null,
+      geometry: extractTrafficRouteGeometry(result),
+      waypoints: extractTrafficWaypoints(result),
+      departureAt
+    });
+  } catch (error) {
+    const status = [400, 429, 503].includes(error.statusCode) ? error.statusCode : 502;
+    const message = error.code === "TWOGIS_NOT_CONFIGURED"
+      ? "Серверный ключ 2ГИС не настроен."
+      : status === 429 ? "2ГИС временно ограничил запросы. Попробуйте позже." : "Прогноз 2ГИС сейчас недоступен. Проверьте доступ Routing API для серверного ключа.";
+    return res.status(status).json({ error: message });
+  }
 });
 
 app.post("/api/subscription-requests", async (req, res, next) => {
@@ -244,6 +296,7 @@ app.get("/", (_req, res) => {
       "POST /api/chat",
       "POST /api/chat/stream",
       "GET /api/competitors",
+      "POST /api/twogis/traffic-route",
       "GET /api/prices",
       "POST /api/price-observations",
       "GET /api/price-observations",

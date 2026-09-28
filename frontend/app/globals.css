@@ -8078,6 +8078,7 @@ summary:focus-visible {
 .trafficActions .trafficToggle.active { border-color: #088b76; background: #078c78; color: #fff; }
 .trafficMapFrame { position: relative; min-height: 570px; background: #eef3f1; }
 .trafficMapCanvas { position: absolute; inset: 0; min-height: 570px; }
+.trafficRouteOverlay { position:absolute; z-index:2; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
 .trafficMapMessage { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; padding: 24px; background: rgba(248, 251, 250, .94); color: #526b66; text-align: center; }
 .trafficMapMessage strong { max-width: 500px; color: #193e38; font-size: 16px; }
 .trafficMapMessage > span:not(.trafficSpinner) { max-width: 520px; font-size: 12px; line-height: 1.6; }
@@ -8087,7 +8088,29 @@ summary:focus-visible {
 .trafficAttribution { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px 0; color: #728783; font-size: 10px; }
 .trafficAttribution a { color: #087e75; font-weight: 700; text-decoration: none; }
 .trafficNote { margin: 0; padding: 9px 16px 15px; color: #899995; font-size: 10px; line-height: 1.5; }
+.trafficForecastPanel { display:grid; grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) minmax(140px,.65fr) minmax(110px,.5fr) auto auto; align-items:end; gap:10px; padding:14px 16px; border-bottom:1px solid #e7eeec; background:#f8fbfa; }
+.trafficForecastHeading { display:flex; align-items:center; gap:10px; color:#087e75; }
+.trafficForecastHeading div { display:grid; gap:3px; }
+.trafficForecastHeading strong { color:#203b38; font-size:13px; }
+.trafficForecastHeading span { color:#788984; font-size:10px; }
+.trafficRoutePickers { display:grid; gap:5px; }
+.trafficRoutePickers button,.trafficForecastButton,.trafficClearButton { display:flex; min-height:36px; align-items:center; justify-content:center; gap:6px; padding:6px 9px; border:1px solid #dce7e4; border-radius:9px; background:#fff; color:#35534e; font:inherit; font-size:10px; font-weight:700; cursor:pointer; }
+.trafficRoutePickers button { justify-content:flex-start; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.trafficRoutePickers button.selected { border-color:#078c78; background:#eef9f6; color:#087e75; }
+.trafficDateField { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:4px 6px; color:#60756f; font-size:10px; font-weight:700; }
+.trafficDateField input { grid-column:1/-1; width:100%; min-height:35px; padding:0 8px; border:1px solid #dce7e4; border-radius:8px; background:#fff; color:#28443e; font:inherit; font-weight:500; }
+.trafficForecastButton { min-height:38px; padding:0 12px; border-color:#087e75; background:#087e75; color:#fff; }
+.trafficForecastButton:disabled,.trafficClearButton:disabled { cursor:not-allowed; opacity:.48; }
+.trafficClearButton { min-height:38px; }
+.trafficForecastPanel > .trafficForecastError,.trafficForecastResult { grid-column:1/-1; margin:0; border-radius:9px; }
+.trafficForecastError { padding:9px 11px; background:#fff1ee; color:#a83f2d; font-size:11px; }
+.trafficForecastResult { display:grid; gap:4px; padding:11px 13px; border:1px solid #c8e9df; background:#eff9f5; color:#345850; font-size:11px; }
+.trafficForecastResult strong { color:#087e75; font-size:12px; }
+.trafficForecastResult small { color:#70827d; font-size:10px; line-height:1.5; }
+.trafficSpinner.small { width:14px; height:14px; border-width:2px; }
 @media (max-width: 680px) { .trafficToolbar { align-items: flex-start; flex-direction: column; }.trafficActions { justify-content: flex-start; }.trafficActions button { min-height: 35px; padding: 0 9px; font-size: 10px; }.trafficMapFrame, .trafficMapCanvas { min-height: min(67vh, 590px); }.trafficAttribution { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 980px) { .trafficForecastPanel { grid-template-columns:repeat(2,minmax(0,1fr)); }.trafficForecastHeading { grid-column:1/-1; }.trafficRoutePickers { grid-column:1/-1; grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width: 480px) { .trafficForecastPanel { grid-template-columns:1fr 1fr; padding:12px; }.trafficForecastHeading,.trafficRoutePickers { grid-column:1/-1; }.trafficForecastButton,.trafficClearButton { grid-column:span 1; font-size:10px; padding:0 6px; } }
 .placesFilters { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); align-items:end; gap:8px; margin:12px 0; padding:12px; border:1px solid #dcece7; border-radius:12px; background:#f8fcfa; }
 .placesFilters label { display:grid; gap:5px; color:#566a62; font-size:9px; font-weight:750; }.placesFilters select,.placesFilters input[type=time] { width:100%; min-width:0; min-height:35px; padding:0 8px; border:1px solid #dbe7e1; border-radius:8px; color:#29453a; background:#fff; font:inherit; font-size:9px; }
 .placesFilters .placesCheck { display:flex; min-height:35px; align-items:center; gap:6px; }.placesFilters .placesCheck input { accent-color:#159b82; }.placesFilters>button { min-height:35px; border:1px solid #d1e8df; border-radius:8px; color:#167663; background:#fff; cursor:pointer; font:inherit; font-size:9px; font-weight:800; }.placesFilters>p { grid-column:1/-1; margin:0; color:#809087; font-size:8px; line-height:1.5; }
